@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>My To-Do App</title>
+
+<style>
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: Arial, sans-serif;
+    background: #f0f4ff;
+    padding: 25px 15px;
+    color: #222;
+}
+
+.container {
+    max-width: 650px;
+    margin: 30px auto;
+    background: white;
+    padding: 25px;
+    border-radius: 15px;
+    box-shadow: 0 5px 20px #0001;
+}
+
+h1 {
+    text-align: center;
+    color: #5145cd;
+    margin-bottom: 10px;
+}
+
+.subtitle {
+    text-align: center;
+    color: #777;
+    margin-bottom: 25px;
+}
+
+.input-area {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+input {
+    flex: 1;
+    min-width: 0;
+    padding: 13px;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    font-size: 15px;
+}
+
+button {
+    padding: 12px 16px;
+    border: none;
+    border-radius: 8px;
+    background: #5145cd;
+    color: white;
+    cursor: pointer;
+}
+
+button:hover {
+    opacity: 0.85;
+}
+
+#search {
+    width: 100%;
+    margin-bottom: 18px;
+}
+
+.task {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 13px;
+    border-bottom: 1px solid #eee;
+}
+
+.task span {
+    flex: 1;
+    overflow-wrap: anywhere;
+}
+
+.task.completed span {
+    text-decoration: line-through;
+    color: #999;
+}
+
+.delete {
+    background: #e74c3c;
+}
+
+.edit {
+    background: #f39c12;
+}
+
+.status {
+    text-align: center;
+    margin: 15px 0;
+    color: #777;
+}
+
+@media(max-width: 450px) {
+    .container {
+        padding: 18px;
+    }
+
+    .task {
+        flex-wrap: wrap;
+    }
+
+    .task span {
+        min-width: 60%;
+    }
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<h1>My To-Do App</h1>
+<p class="subtitle">Organize your day, one task at a time!</p>
+
+<div class="input-area">
+    <input id="taskInput" type="text" placeholder="Enter your task">
+    <button onclick="addTask()">Add</button>
+</div>
+
+<input id="search" type="text"
+placeholder="Search tasks..." oninput="loadTasks()">
+
+<p class="status" id="status">Loading tasks...</p>
+
+<div id="taskList"></div>
+
+</div>
+
+<script>
+
+const SUPABASE_URL = "https://lbtqaklnaovhiedsiuna.supabase.co";
+
+const SUPABASE_KEY = "sb_publishable_Kk8kDr2NCZ7jl9kg4lcqgg_Zvylqkzp";
+
+const API = SUPABASE_URL + "/rest/v1/todos";
+
+async function request(url, options = {}) {
+
+    const response = await fetch(url, {
+        ...options,
+        headers: {
+            "apikey": SUPABASE_KEY,
+            "Content-Type": "application/json",
+            ...options.headers
+        }
+    });
+
+    if (!response.ok) {
+        throw new Error(await response.text());
+    }
+
+    return response.status === 204 ? null : response.json();
+}
+
+async function loadTasks() {
+
+    const list = document.getElementById("taskList");
+    const status = document.getElementById("status");
+
+    try {
+
+        const tasks = await request(
+            API + "?select=*&order=created_at.desc"
+        );
+
+        const search = document.getElementById("search")
+            .value.toLowerCase();
+
+        const filtered = tasks.filter(task =>
+            task.title.toLowerCase().includes(search)
+        );
+
+        list.innerHTML = "";
+
+        status.textContent = filtered.length + " task(s) found";
+
+        filtered.forEach(task => {
+
+            const item = document.createElement("div");
+
+            item.className = "task" +
+                (task.completed ? " completed" : "");
+
+            const checkbox = document.createElement("input");
+
+            checkbox.type = "checkbox";
+            checkbox.checked = task.completed;
+            checkbox.style.flex = "none";
+
+            checkbox.addEventListener("change", () =>
+                toggleTask(task.id, checkbox.checked)
+            );
+
+            const title = document.createElement("span");
+            title.textContent = task.title;
+
+            const edit = document.createElement("button");
+
+            edit.className = "edit";
+            edit.textContent = "Edit";
+
+            edit.onclick = () =>
+                editTask(task.id, task.title);
+
+            const del = document.createElement("button");
+
+            del.className = "delete";
+            del.textContent = "Delete";
+
+            del.onclick = () => deleteTask(task.id);
+
+            item.append(checkbox, title, edit, del);
+
+            list.appendChild(item);
+
+        });
+
+    } catch (error) {
+
+        status.textContent = "Error: " + error.message;
+
+    }
+}
+
+async function addTask() {
+
+    const input = document.getElementById("taskInput");
+
+    const title = input.value.trim();
+
+    if (!title) {
+        alert("Please enter a task!");
+        return;
+    }
+
+    try {
+
+        await request(API, {
+            method: "POST",
+            headers: {
+                "Prefer": "return=minimal"
+            },
+            body: JSON.stringify({
+                title: title,
+                completed: false
+            })
+        });
+
+        input.value = "";
+
+        loadTasks();
+
+    } catch (error) {
+
+        alert("Could not add task: " + error.message);
+
+    }
+}
+
+async function toggleTask(id, completed) {
+
+    try {
+
+        await request(API + "?id=eq." + id, {
+            method: "PATCH",
+            headers: {
+                "Prefer": "return=minimal"
+            },
+            body: JSON.stringify({ completed })
+        });
+
+        loadTasks();
+
+    } catch (error) {
+
+        alert(error.message);
+
+    }
+}
+
+async function editTask(id, oldTitle) {
+
+    const newTitle = prompt("Edit your task:", oldTitle);
+
+    if (newTitle === null || !newTitle.trim()) return;
+
+    try {
+
+        await request(API + "?id=eq." + id, {
+            method: "PATCH",
+            headers: {
+                "Prefer": "return=minimal"
+            },
+            body: JSON.stringify({
+                title: newTitle.trim()
+            })
+        });
+
+        loadTasks();
+
+    } catch (error) {
+
+        alert(error.message);
+
+    }
+}
+
+async function deleteTask(id) {
+
+    if (!confirm("Delete this task?")) return;
+
+    try {
+
+        await request(API + "?id=eq." + id, {
+            method: "DELETE",
+            headers: {
+                "Prefer": "return=minimal"
+            }
+        });
+
+        loadTasks();
+
+    } catch (error) {
+
+        alert(error.message);
+
+    }
+}
+
+loadTasks();
+
+</script>
+
+</body>
+</html>
